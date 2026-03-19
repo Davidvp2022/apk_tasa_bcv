@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // Aquí usamos lo que agregamos al pubspec
-import 'dart:convert'; // Para entender los datos que vienen de internet
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
-void main() => runApp(MaterialApp(
-      home: MonitorTasas(), 
-      debugShowCheckedModeBanner: false, // Quita la etiqueta roja de "debug"
-    ));
+void main() => runApp(MaterialApp(home: MonitorTasas(), debugShowCheckedModeBanner: false));
 
 class MonitorTasas extends StatefulWidget {
   @override
@@ -13,75 +10,99 @@ class MonitorTasas extends StatefulWidget {
 }
 
 class _MonitorTasasState extends State<MonitorTasas> {
-  // 1. Variables para guardar los precios que traeremos
-  String bcvDolar = "---";
-  String bcvEuro = "---";
-  String usdtP2P = "---";
+  // Variables de precios (ahora como números para la calculadora)
+  double precioDolar = 0.0;
+  double precioEuro = 0.0;
+  double precioUsdt = 0.0;
+  
+  // Controlador para el texto que escribe el usuario
+  TextEditingController controller = TextEditingController();
+  double resultado = 0.0;
 
-  // 2. La función que "viaja" a internet a buscar los datos
-Future<void> obtenerPrecios() async {
+  Future<void> obtenerIndividual(String url, String tipo) async {
     try {
-      // Definimos una "identidad" para la app (Headers)
-      Map<String, String> cabeceras = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' 
-      };
-
-      final resDolar = await http.get(Uri.parse('https://ve.dolarapi.com/v1/dolares/oficial'), headers: cabeceras);
-      final resEuro = await http.get(Uri.parse('https://ve.dolarapi.com/v1/dolares/euro'), headers: cabeceras);
-      final resUsdt = await http.get(Uri.parse('https://ve.dolarapi.com/v1/dolares/binance'), headers: cabeceras);
-
-      // Imprimimos en consola para ver qué está llegando
-      print("Status Dólar: ${resDolar.statusCode}");
-      print("Cuerpo Dólar: ${resDolar.body}");
-
-      if (resDolar.statusCode == 200 && resDolar.body.isNotEmpty) {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        var data = json.decode(res.body);
         setState(() {
-          bcvDolar = json.decode(resDolar.body)['promedio'].toString();
-          bcvEuro = json.decode(resEuro.body)['promedio'].toString();
-          usdtP2P = json.decode(resUsdt.body)['promedio'].toString();
+          if (tipo == 'USD') precioDolar = double.parse(data['promedio'].toString());
+          if (tipo == 'EUR') precioEuro = double.parse(data['promedio'].toString());
+          if (tipo == 'USDT') precioUsdt = double.parse(data['promedio'].toString());
         });
-      } else {
-        setState(() => bcvDolar = "Error: ${resDolar.statusCode}");
       }
     } catch (e) {
-      print("Error detallado: $e");
-      setState(() => bcvDolar = "Error de red");
+      print("Error en $tipo: $e");
     }
+  }
+
+  void actualizarTodo() {
+    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/oficial', 'USD');
+    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/euro', 'EUR');
+    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/binance', 'USDT');
   }
 
   @override
   void initState() {
     super.initState();
-    obtenerPrecios(); // Se ejecuta automáticamente al abrir la app
+    actualizarTodo();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Monitor de Tasas 🇻🇪"),
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(title: Text("Dólar & Calculadora 🇻🇪"), backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+      body: SingleChildScrollView( // Para que no se corte la pantalla al abrir el teclado
+        padding: EdgeInsets.all(15),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Tarjetas para mostrar los precios
-            _tarjetaPrecio("Dólar BCV", bcvDolar, Colors.blue),
-            _tarjetaPrecio("Euro BCV", bcvEuro, Colors.green),
-            _tarjetaPrecio("USDT Binance", usdtP2P, Colors.orange),
+            // SECCIÓN DE PRECIOS
+            _cardPrecio("Dólar BCV", precioDolar, Colors.blue),
+            _cardPrecio("Euro BCV", precioEuro, Colors.green),
+            _cardPrecio("USDT Binance", precioUsdt, Colors.orange),
             
-            SizedBox(height: 30),
+            Divider(height: 40),
+
+            // SECCIÓN CALCULADORA
+            Text("Calculadora de Conversión", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(height: 15),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "Monto en Divisas (\$ / € / USDT)",
+                prefixIcon: Icon(Icons.calculate),
+              ),
+              onChanged: (valor) {
+                // Esto hace que el cálculo sea instantáneo al escribir
+                setState(() {
+                  double monto = double.tryParse(valor) ?? 0.0;
+                  resultado = monto * precioDolar; // Por defecto usa el dólar
+                });
+              },
+            ),
             
+            SizedBox(height: 20),
+            
+            Container(
+              padding: EdgeInsets.all(20),
+              width: double.infinity,
+              decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)),
+              child: Column(
+                children: [
+                  Text("Total en Bolívares (VES):", style: TextStyle(color: Colors.indigo)),
+                  Text("Bs. ${resultado.toStringAsFixed(2)}", 
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: obtenerPrecios,
-              icon: Icon(Icons.refresh),
-              label: Text("Actualizar Precios"),
-              style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+              onPressed: actualizarTodo, 
+              icon: Icon(Icons.refresh), 
+              label: Text("Actualizar Tasas")
             ),
           ],
         ),
@@ -89,15 +110,13 @@ Future<void> obtenerPrecios() async {
     );
   }
 
-  // Un "Widget" personalizado para no repetir código de las tarjetas
-  Widget _tarjetaPrecio(String titulo, String valor, Color color) {
+  Widget _cardPrecio(String t, double v, Color c) {
     return Card(
-      elevation: 4,
-      margin: EdgeInsets.symmetric(vertical: 10),
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: color, child: Icon(Icons.monetization_on, color: Colors.white)),
-        title: Text(titulo, style: TextStyle(fontWeight: FontWeight.bold)),
-        trailing: Text("Bs. $valor", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        leading: Icon(Icons.monetization_on, color: c),
+        title: Text(t),
+        trailing: Text(v == 0.0 ? "Cargando..." : "Bs. ${v.toStringAsFixed(2)}", 
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ),
     );
   }
