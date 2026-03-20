@@ -10,24 +10,46 @@ class MonitorTasas extends StatefulWidget {
 }
 
 class _MonitorTasasState extends State<MonitorTasas> {
-  // Variables de precios (ahora como números para la calculadora)
   double precioDolar = 0.0;
   double precioEuro = 0.0;
-  double precioUsdt = 0.0;
+  double precioUsdt = 0.0; // Usaremos el Paralelo como referencia de USDT/Dólar Libre
   
-  // Controlador para el texto que escribe el usuario
+  String monedaSeleccionada = 'USD'; 
   TextEditingController controller = TextEditingController();
   double resultado = 0.0;
 
-  Future<void> obtenerIndividual(String url, String tipo) async {
+  Future<void> actualizarTasas() async {
+    // Usamos los links exactos de tu investigación
+    await fetchTasa('https://ve.dolarapi.com/v1/dolares/oficial', 'USD');
+    await fetchTasa('https://ve.dolarapi.com/v1/euros', 'EUR');
+    await fetchTasa('https://ve.dolarapi.com/v1/dolares/paralelo', 'USDT');
+    
+    recalcular(controller.text);
+  }
+
+  Future<void> fetchTasa(String url, String tipo) async {
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
-        var data = json.decode(res.body);
+        final decodedData = json.decode(res.body);
+        
         setState(() {
-          if (tipo == 'USD') precioDolar = double.parse(data['promedio'].toString());
-          if (tipo == 'EUR') precioEuro = double.parse(data['promedio'].toString());
-          if (tipo == 'USDT') precioUsdt = double.parse(data['promedio'].toString());
+          double valor = 0.0;
+
+          // Si es una LISTA (como en el caso de /v1/euros)
+          if (decodedData is List) {
+            // Buscamos el que dice "oficial" dentro de la lista
+            var oficial = decodedData.firstWhere((item) => item['fuente'] == 'oficial');
+            valor = double.parse(oficial['promedio'].toString());
+          } 
+          // Si es un OBJETO único (como /v1/dolares/oficial o paralelo)
+          else {
+            valor = double.parse(decodedData['promedio'].toString());
+          }
+
+          if (tipo == 'USD') precioDolar = valor;
+          if (tipo == 'EUR') precioEuro = valor;
+          if (tipo == 'USDT') precioUsdt = valor;
         });
       }
     } catch (e) {
@@ -35,77 +57,93 @@ class _MonitorTasasState extends State<MonitorTasas> {
     }
   }
 
-  void actualizarTodo() {
-    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/oficial', 'USD');
-    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/euro', 'EUR');
-    obtenerIndividual('https://ve.dolarapi.com/v1/dolares/binance', 'USDT');
+  void recalcular(String valor) {
+    double monto = double.tryParse(valor) ?? 0.0;
+    double tasa = precioDolar;
+    if (monedaSeleccionada == 'EUR') tasa = precioEuro;
+    if (monedaSeleccionada == 'USDT') tasa = precioUsdt;
+
+    setState(() {
+      resultado = monto * tasa;
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    actualizarTodo();
+    actualizarTasas();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(title: Text("Dólar & Calculadora 🇻🇪"), backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-      body: SingleChildScrollView( // Para que no se corte la pantalla al abrir el teclado
-        padding: EdgeInsets.all(15),
+      appBar: AppBar(
+        title: Text("Dólar & Calculadora 🇻🇪"), 
+        backgroundColor: Colors.indigo, 
+        foregroundColor: Colors.white,
+        actions: [IconButton(icon: Icon(Icons.refresh), onPressed: actualizarTasas)],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            // SECCIÓN DE PRECIOS
             _cardPrecio("Dólar BCV", precioDolar, Colors.blue),
             _cardPrecio("Euro BCV", precioEuro, Colors.green),
-            _cardPrecio("USDT Binance", precioUsdt, Colors.orange),
+            _cardPrecio("Dólar Paralelo", precioUsdt, Colors.red), // Cambié el nombre a Paralelo
             
             Divider(height: 40),
-
-            // SECCIÓN CALCULADORA
             Text("Calculadora de Conversión", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             SizedBox(height: 15),
+
+            ToggleButtons(
+              isSelected: [monedaSeleccionada == 'USD', monedaSeleccionada == 'EUR', monedaSeleccionada == 'USDT'],
+              onPressed: (int index) {
+                setState(() {
+                  if (index == 0) monedaSeleccionada = 'USD';
+                  if (index == 1) monedaSeleccionada = 'EUR';
+                  if (index == 2) monedaSeleccionada = 'USDT';
+                  recalcular(controller.text);
+                });
+              },
+              borderRadius: BorderRadius.circular(10),
+              children: [
+                Padding(padding: EdgeInsets.symmetric(horizontal: 15), child: Text("USD")),
+                Padding(padding: EdgeInsets.symmetric(horizontal: 15), child: Text("EUR")),
+                Padding(padding: EdgeInsets.symmetric(horizontal: 15), child: Text("PARA")),
+              ],
+            ),
+
+            SizedBox(height: 20),
             TextField(
               controller: controller,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
-                labelText: "Monto en Divisas (\$ / € / USDT)",
+                labelText: "Monto en $monedaSeleccionada",
                 prefixIcon: Icon(Icons.calculate),
               ),
-              onChanged: (valor) {
-                // Esto hace que el cálculo sea instantáneo al escribir
-                setState(() {
-                  double monto = double.tryParse(valor) ?? 0.0;
-                  resultado = monto * precioDolar; // Por defecto usa el dólar
-                });
-              },
+              onChanged: recalcular,
             ),
             
             SizedBox(height: 20),
-            
-            Container(
-              padding: EdgeInsets.all(20),
-              width: double.infinity,
-              decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)),
-              child: Column(
-                children: [
-                  Text("Total en Bolívares (VES):", style: TextStyle(color: Colors.indigo)),
-                  Text("Bs. ${resultado.toStringAsFixed(2)}", 
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.indigo)),
-                ],
-              ),
-            ),
-
-            SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: actualizarTodo, 
-              icon: Icon(Icons.refresh), 
-              label: Text("Actualizar Tasas")
-            ),
+            _cajaResultado(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _cajaResultado() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      width: double.infinity,
+      decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        children: [
+          Text("Total en Bolívares:", style: TextStyle(color: Colors.indigo)),
+          Text("Bs. ${resultado.toStringAsFixed(2)}", 
+            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.indigo)),
+        ],
       ),
     );
   }
@@ -116,7 +154,7 @@ class _MonitorTasasState extends State<MonitorTasas> {
         leading: Icon(Icons.monetization_on, color: c),
         title: Text(t),
         trailing: Text(v == 0.0 ? "Cargando..." : "Bs. ${v.toStringAsFixed(2)}", 
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }
