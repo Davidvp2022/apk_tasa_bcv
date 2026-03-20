@@ -5,6 +5,8 @@ import 'dart:convert';
 void main() => runApp(MiMonitorApp());
 
 class MiMonitorApp extends StatefulWidget {
+  const MiMonitorApp({super.key});
+
   @override
   _MiMonitorAppState createState() => _MiMonitorAppState();
 }
@@ -33,7 +35,7 @@ class _MiMonitorAppState extends State<MiMonitorApp> {
 
 class MonitorTasas extends StatefulWidget {
   final VoidCallback onThemeToggle;
-  MonitorTasas({required this.onThemeToggle});
+  const MonitorTasas({super.key, required this.onThemeToggle});
 
   @override
   _MonitorTasasState createState() => _MonitorTasasState();
@@ -61,8 +63,9 @@ class _MonitorTasasState extends State<MonitorTasas> {
     try {
       DateTime dt = DateTime.parse(fechaIso);
       if (esBcv) {
-        if (dt.weekday == DateTime.friday) dt = dt.add(Duration(days: 3));
-        else if (dt.weekday == DateTime.saturday) dt = dt.add(Duration(days: 2));
+        if (dt.weekday == DateTime.friday) {
+          dt = dt.add(Duration(days: 3));
+        } else if (dt.weekday == DateTime.saturday) dt = dt.add(Duration(days: 2));
         else dt = dt.add(Duration(days: 1));
       }
       return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
@@ -211,7 +214,7 @@ class _MonitorTasasState extends State<MonitorTasas> {
       child: ListTile(
         leading: CircleAvatar(backgroundColor: c, child: Icon(i, color: Colors.white)),
         title: Text(t, style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("$f"),
+        subtitle: Text(f),
         trailing: Text(v == 0.0 ? "..." : "Bs. ${v.toStringAsFixed(2)}", 
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ),
