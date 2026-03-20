@@ -1,8 +1,8 @@
-# apk_bcv
+# Tasa BCV
 
-Esto es un mini_proyecto que hice para practicar programacion con
+Esto es un mini-proyecto que hice para practicar programacion con
 Flutter en Android
-## Getting Started
+## Informacion nada importante...
 
 Pues no hay mucho que decir, es una aplicacion para ver
 las diferentes tasas del dolar en Venezuela.
