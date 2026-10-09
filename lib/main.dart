@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:home_widget/home_widget.dart';
 import 'dart:convert';
 
 void main() => runApp(MiMonitorApp());
@@ -43,18 +44,69 @@ class _MonitorTasasState extends State<MonitorTasas> {
   double precioDolar = 0.0;
   double precioEuro = 0.0;
   double precioUsdt = 0.0; 
-  String fDolar = "", fEuro = "", fUsdt = "";
+
+  String rawFDolar = "", rawFEuro = "", rawFUsdt = "";
 
   String monedaSeleccionada = 'USD'; 
   bool deDivisaABs = true;
   TextEditingController controller = TextEditingController();
   double resultado = 0.0;
 
+  @override
+  void initState() { 
+    super.initState(); 
+    _inicializarApp(); 
+  }
+
+  Future<void> _inicializarApp() async {
+    await cargarDatosLocales();
+    await actualizarTasas();
+  }
+
+  Future<void> cargarDatosLocales() async {
+    try {
+      String? sDolar = await HomeWidget.getWidgetData<String>('precio_dolar');
+      String? sEuro = await HomeWidget.getWidgetData<String>('precio_euro');
+      String? sUsdt = await HomeWidget.getWidgetData<String>('precio_usdt');
+      String? fD = await HomeWidget.getWidgetData<String>('raw_f_dolar');
+      String? fE = await HomeWidget.getWidgetData<String>('raw_f_euro');
+      String? fU = await HomeWidget.getWidgetData<String>('raw_f_usdt');
+
+      if (sDolar != null && sEuro != null && sUsdt != null) {
+        setState(() {
+          precioDolar = double.tryParse(sDolar) ?? 0.0;
+          precioEuro = double.tryParse(sEuro) ?? 0.0;
+          precioUsdt = double.tryParse(sUsdt) ?? 0.0;
+          rawFDolar = fD ?? "";
+          rawFEuro = fE ?? "";
+          rawFUsdt = fU ?? "";
+        });
+        recalcular(controller.text);
+      }
+    } catch (e) {
+      print("Error leyendo caché local: $e");
+    }
+  }
+
   Future<void> actualizarTasas() async {
     await fetchTasa('https://ve.dolarapi.com/v1/dolares/oficial', 'USD');
     await fetchTasa('https://ve.dolarapi.com/v1/euros', 'EUR');
     await fetchTasa('https://ve.dolarapi.com/v1/dolares/paralelo', 'USDT');
     recalcular(controller.text);
+
+    // Guardado local tanto para el modo sin conexión como para el widget nativo
+    await HomeWidget.saveWidgetData<String>('precio_dolar', precioDolar.toString());
+    await HomeWidget.saveWidgetData<String>('precio_euro', precioEuro.toString());
+    await HomeWidget.saveWidgetData<String>('precio_usdt', precioUsdt.toString());
+    await HomeWidget.saveWidgetData<String>('raw_f_dolar', rawFDolar);
+    await HomeWidget.saveWidgetData<String>('raw_f_euro', rawFEuro);
+    await HomeWidget.saveWidgetData<String>('raw_f_usdt', rawFUsdt);
+
+    await HomeWidget.saveWidgetData<String>('widget_dolar', formatearDecimal(precioDolar));
+    await HomeWidget.saveWidgetData<String>('widget_euro', formatearDecimal(precioEuro));
+    await HomeWidget.saveWidgetData<String>('widget_usdt', formatearDecimal(precioUsdt));
+    await HomeWidget.saveWidgetData<String>('widget_fecha', formatearFecha(rawFDolar));
+    await HomeWidget.updateWidget(name: 'AppWidgetProvider');
   }
 
   String formatearFecha(String fechaIso) {
@@ -66,14 +118,13 @@ class _MonitorTasasState extends State<MonitorTasas> {
     }
   }
 
-  // Convierte los decimales de punto a coma para la interfaz
   String formatearDecimal(double valor) {
     return valor.toStringAsFixed(2).replaceAll('.', ',');
   }
 
   Future<void> fetchTasa(String url, String tipo) async {
     try {
-      final res = await http.get(Uri.parse(url));
+      final res = await http.get(Uri.parse(url)).timeout(Duration(seconds: 4));
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         setState(() {
@@ -87,18 +138,17 @@ class _MonitorTasasState extends State<MonitorTasas> {
             v = double.parse(data['promedio'].toString());
             f = data['fechaActualizacion'];
           }
-          if (tipo == 'USD') { precioDolar = v; fDolar = formatearFecha(f); }
-          if (tipo == 'EUR') { precioEuro = v; fEuro = formatearFecha(f); }
-          if (tipo == 'USDT') { precioUsdt = v; fUsdt = formatearFecha(f); }
+          if (tipo == 'USD') { precioDolar = v; rawFDolar = f; }
+          if (tipo == 'EUR') { precioEuro = v; rawFEuro = f; }
+          if (tipo == 'USDT') { precioUsdt = v; rawFUsdt = f; }
         });
       }
     } catch (e) { 
-      print(e); 
+      print("No se pudo obtener tasa ($tipo): $e"); 
     }
   }
 
   void recalcular(String valor) {
-    // Reemplaza comas por puntos internamente para que Dart pueda calcular
     double monto = double.tryParse(valor.replaceAll(',', '.')) ?? 0.0;
     double tasa = (monedaSeleccionada == 'USD') ? precioDolar : 
                   (monedaSeleccionada == 'EUR') ? precioEuro : precioUsdt;
@@ -111,12 +161,6 @@ class _MonitorTasasState extends State<MonitorTasas> {
         resultado = monto / tasa;
       }
     });
-  }
-
-  @override
-  void initState() { 
-    super.initState(); 
-    actualizarTasas(); 
   }
 
   @override
@@ -136,9 +180,9 @@ class _MonitorTasasState extends State<MonitorTasas> {
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            _cardPrecio("Dólar BCV", precioDolar, Icons.attach_money, Colors.blue, fDolar),
-            _cardPrecio("Euro BCV", precioEuro, Icons.euro, Colors.green, fEuro),
-            _cardPrecio("USDT Binance", precioUsdt, Icons.currency_bitcoin, Colors.orange, fUsdt),
+            _cardPrecio("Dólar BCV", precioDolar, Icons.attach_money, Colors.blue, formatearFecha(rawFDolar)),
+            _cardPrecio("Euro BCV", precioEuro, Icons.euro, Colors.green, formatearFecha(rawFEuro)),
+            _cardPrecio("USDT Binance", precioUsdt, Icons.currency_bitcoin, Colors.orange, formatearFecha(rawFUsdt)),
             
             Divider(height: 35),
             
@@ -189,6 +233,18 @@ class _MonitorTasasState extends State<MonitorTasas> {
               ),
               onChanged: recalcular,
             ),
+
+            SizedBox(height: 30),
+            Text(
+              "Hecho por David Valenzuela",
+              style: TextStyle(
+                fontSize: 12,
+                letterSpacing: 0.5,
+                color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 10),
           ],
         ),
       ),
