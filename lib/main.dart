@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 void main() => runApp(MiMonitorApp());
 
 class MiMonitorApp extends StatefulWidget {
-  const MiMonitorApp({super.key});
-
   @override
   _MiMonitorAppState createState() => _MiMonitorAppState();
 }
 
 class _MiMonitorAppState extends State<MiMonitorApp> {
-  // Variable para controlar el tema (Claro/Oscuro)
   ThemeMode _themeMode = ThemeMode.light;
 
   void toggleTheme() {
@@ -35,7 +33,7 @@ class _MiMonitorAppState extends State<MiMonitorApp> {
 
 class MonitorTasas extends StatefulWidget {
   final VoidCallback onThemeToggle;
-  const MonitorTasas({super.key, required this.onThemeToggle});
+  MonitorTasas({required this.onThemeToggle});
 
   @override
   _MonitorTasasState createState() => _MonitorTasasState();
@@ -48,7 +46,7 @@ class _MonitorTasasState extends State<MonitorTasas> {
   String fDolar = "", fEuro = "", fUsdt = "";
 
   String monedaSeleccionada = 'USD'; 
-  bool deDivisaABs = true; // Controla la dirección de la calculadora
+  bool deDivisaABs = true;
   TextEditingController controller = TextEditingController();
   double resultado = 0.0;
 
@@ -59,17 +57,18 @@ class _MonitorTasasState extends State<MonitorTasas> {
     recalcular(controller.text);
   }
 
-  String formatearFecha(String fechaIso, bool esBcv) {
+  String formatearFecha(String fechaIso) {
     try {
       DateTime dt = DateTime.parse(fechaIso);
-      if (esBcv) {
-        if (dt.weekday == DateTime.friday) {
-          dt = dt.add(Duration(days: 3));
-        } else if (dt.weekday == DateTime.saturday) dt = dt.add(Duration(days: 2));
-        else dt = dt.add(Duration(days: 1));
-      }
       return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}";
-    } catch (e) { return "---"; }
+    } catch (e) { 
+      return "---"; 
+    }
+  }
+
+  // Convierte los decimales de punto a coma para la interfaz
+  String formatearDecimal(double valor) {
+    return valor.toStringAsFixed(2).replaceAll('.', ',');
   }
 
   Future<void> fetchTasa(String url, String tipo) async {
@@ -78,7 +77,8 @@ class _MonitorTasasState extends State<MonitorTasas> {
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
         setState(() {
-          double v = 0.0; String f = "";
+          double v = 0.0; 
+          String f = "";
           if (data is List) {
             var oficial = data.firstWhere((item) => item['fuente'] == 'oficial');
             v = double.parse(oficial['promedio'].toString());
@@ -87,22 +87,24 @@ class _MonitorTasasState extends State<MonitorTasas> {
             v = double.parse(data['promedio'].toString());
             f = data['fechaActualizacion'];
           }
-          if (tipo == 'USD') { precioDolar = v; fDolar = formatearFecha(f, true); }
-          if (tipo == 'EUR') { precioEuro = v; fEuro = formatearFecha(f, true); }
-          if (tipo == 'USDT') { precioUsdt = v; fUsdt = formatearFecha(f, false); }
+          if (tipo == 'USD') { precioDolar = v; fDolar = formatearFecha(f); }
+          if (tipo == 'EUR') { precioEuro = v; fEuro = formatearFecha(f); }
+          if (tipo == 'USDT') { precioUsdt = v; fUsdt = formatearFecha(f); }
         });
       }
-    } catch (e) { print(e); }
+    } catch (e) { 
+      print(e); 
+    }
   }
 
   void recalcular(String valor) {
-    double monto = double.tryParse(valor) ?? 0.0;
+    // Reemplaza comas por puntos internamente para que Dart pueda calcular
+    double monto = double.tryParse(valor.replaceAll(',', '.')) ?? 0.0;
     double tasa = (monedaSeleccionada == 'USD') ? precioDolar : 
                   (monedaSeleccionada == 'EUR') ? precioEuro : precioUsdt;
     
     setState(() {
       if (tasa == 0) { resultado = 0; return; }
-      // Lógica de dirección
       if (deDivisaABs) {
         resultado = monto * tasa;
       } else {
@@ -112,13 +114,16 @@ class _MonitorTasasState extends State<MonitorTasas> {
   }
 
   @override
-  void initState() { super.initState(); actualizarTasas(); }
+  void initState() { 
+    super.initState(); 
+    actualizarTasas(); 
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Tasas de Venezuela 🇻🇪"),
+        title: Text("Tasas de Venezuela"),
         actions: [
           IconButton(
             icon: Icon(Theme.of(context).brightness == Brightness.light ? Icons.dark_mode : Icons.light_mode),
@@ -131,11 +136,11 @@ class _MonitorTasasState extends State<MonitorTasas> {
         padding: EdgeInsets.all(20),
         child: Column(
           children: [
-            _cardPrecio("Dólar BCV", precioDolar, Icons.attach_money, Colors.green, fDolar),
-            _cardPrecio("Euro BCV", precioEuro, Icons.euro, Colors.blue, fEuro),
-            _cardPrecio("USDT Promedio", precioUsdt, Icons.currency_bitcoin, Colors.orange, fUsdt),
+            _cardPrecio("Dólar BCV", precioDolar, Icons.attach_money, Colors.blue, fDolar),
+            _cardPrecio("Euro BCV", precioEuro, Icons.euro, Colors.green, fEuro),
+            _cardPrecio("USDT Binance", precioUsdt, Icons.currency_bitcoin, Colors.orange, fUsdt),
             
-            Divider(height: 40),
+            Divider(height: 35),
             
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -169,10 +174,14 @@ class _MonitorTasasState extends State<MonitorTasas> {
               ],
             ),
 
-            SizedBox(height: 20),
+            SizedBox(height: 15),
+
+            _cajaResultado(),
+
+            SizedBox(height: 15),
             TextField(
               controller: controller,
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
                 labelText: deDivisaABs ? "Monto en $monedaSeleccionada" : "Monto en Bolívares (VES)",
@@ -180,9 +189,6 @@ class _MonitorTasasState extends State<MonitorTasas> {
               ),
               onChanged: recalcular,
             ),
-            
-            SizedBox(height: 20),
-            _cajaResultado(),
           ],
         ),
       ),
@@ -191,18 +197,46 @@ class _MonitorTasasState extends State<MonitorTasas> {
 
   Widget _cajaResultado() {
     String unidad = deDivisaABs ? "VES" : monedaSeleccionada;
+    String montoFormateado = formatearDecimal(resultado);
+    
     return Container(
-      padding: EdgeInsets.all(20),
+      padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       width: double.infinity,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text("Resultado:", style: TextStyle(fontSize: 14)),
-          Text("${resultado.toStringAsFixed(2)} $unidad", 
-            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Resultado:", style: TextStyle(fontSize: 14)),
+              IconButton(
+                tooltip: "Copiar resultado",
+                icon: Icon(Icons.copy, size: 20, color: Theme.of(context).colorScheme.primary),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: montoFormateado));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Monto copiado: $montoFormateado"),
+                      duration: Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          SelectableText(
+            "$montoFormateado $unidad",
+            style: TextStyle(
+              fontSize: 30, 
+              fontWeight: FontWeight.bold, 
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
         ],
       ),
     );
@@ -214,8 +248,8 @@ class _MonitorTasasState extends State<MonitorTasas> {
       child: ListTile(
         leading: CircleAvatar(backgroundColor: c, child: Icon(i, color: Colors.white)),
         title: Text(t, style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(f),
-        trailing: Text(v == 0.0 ? "..." : "Bs. ${v.toStringAsFixed(2)}", 
+        subtitle: Text("Fecha: $f"),
+        trailing: Text(v == 0.0 ? "..." : "Bs. ${formatearDecimal(v)}", 
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
       ),
     );
